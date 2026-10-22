@@ -54,12 +54,7 @@ label input,label select,label textarea{border:1px solid var(--line);background:
 @media(max-width:760px){.row{grid-template-columns:1fr 1fr}.ago{text-align:left}.g2{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:no-preference){.row{transition:border-color .15s}}
 .bar .unit{align-self:center}
-body.locked header,body.locked .bar,body.locked main{display:none}
-#lock{display:none;min-height:100vh;place-content:center;justify-items:center;gap:14px;text-align:center;padding:20px}
-body.locked #lock{display:grid}
-#lock p{margin:0;color:var(--mute);max-width:36ch}
 [hidden]{display:none!important}
-body.locked #calwrap{display:none}
 #calwrap{padding:0 clamp(14px,4vw,40px) 60px}
 .calhead{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
 .calt{font:700 26px/1 'Barlow Condensed',Impact,sans-serif;margin-left:8px}
@@ -80,14 +75,8 @@ body.locked #calwrap{display:none}
 .legend{color:var(--mute);font-size:14px;margin:8px 0 0}
 @media(prefers-color-scheme:dark){.wb{color:#0d141b}}
 </style>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
-<body class="locked">
-<div id="lock">
-  <h1>Work Orders</h1>
-  <p id="lockmsg">Sign in with Google to open your work orders.</p>
-  <button class="p" id="unlock">Sign in with Google</button>
-</div>
+<body>
 <header>
   <h1>Work Orders</h1>
   <div class="sum" id="sum"></div>
@@ -103,7 +92,7 @@ body.locked #calwrap{display:none}
     <option value="val">Sort: value</option>
     <option value="num">Sort: WO number</option>
   </select>
-  <button id="drv">Connect Google Drive</button><span id="dstat" class="unit" role="status"></span>
+  <button id="fo">Open data file</button><button id="fn">New data file</button><span id="dstat" class="unit" role="status"></span>
   <span class="sp"></span>
   <button id="xdone">Export done notes</button>
   <button id="exp">Export backup</button>
@@ -162,7 +151,7 @@ const STALE_DAYS=3, KEY="wo-tracker-v1";
 let wos=[];
 try{wos=JSON.parse(localStorage.getItem(KEY)||"[]")}catch(e){wos=[]}
 const $=id=>document.getElementById(id);
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(wos))}catch(e){}clearTimeout(timer);timer=setTimeout(()=>driveSave(),600)};
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(wos))}catch(e){}clearTimeout(timer);timer=setTimeout(()=>fileSave(),600)};
 const money=n=>(+n||0).toLocaleString(undefined,{style:"currency",currency:"USD",maximumFractionDigits:0});
 const days=w=>Math.floor((Date.now()-new Date(w.looked))/864e5);
 const isStale=w=>w.status!=="Done"&&days(w)>=STALE_DAYS;
@@ -310,70 +299,62 @@ $("xem").onclick=()=>{
   location.href="mailto:"+to+"?subject="+encodeURIComponent("Done work order notes "+today())+"&body="+encodeURIComponent(doneText());
 };
 
-/* ---------- Google Drive sync ---------- */
-const CLIENT_ID="PASTE_YOUR_CLIENT_ID.apps.googleusercontent.com";
-const FILE_NAME="work-orders.json";
-let tok=null,tokExp=0,tc=null,timer=null,fileId=localStorage.getItem("wo-drive-file")||"";
+/* ---------- Save to a file on this computer ---------- */
+const FSA=!!window.showSaveFilePicker;
+const FT=[{description:"Work orders",accept:{"application/json":[".json"]}}];
+let timer=null,fh=null,savedH=null;
 const stat=t=>{$("dstat").textContent=t};
-const driveReady=()=>tok&&Date.now()<tokExp;
-async function dfetch(url,opt={}){
-  const r=await fetch(url,{...opt,headers:{...(opt.headers||{}),Authorization:"Bearer "+tok}});
-  if(r.status===401){tok=null;throw new Error("expired")}
-  if(!r.ok)throw new Error("Drive error "+r.status);
-  return r;
+const idb=(mode,fn)=>new Promise((res,rej)=>{
+  const r=indexedDB.open("wo-tracker",1);
+  r.onupgradeneeded=()=>r.result.createObjectStore("h");
+  r.onerror=()=>rej(r.error);
+  r.onsuccess=()=>{const tx=r.result.transaction("h",mode);const q=fn(tx.objectStore("h"));tx.oncomplete=()=>res(q&&q.result);tx.onerror=()=>rej(tx.error)};
+});
+async function loadFrom(h){
+  const t=await(await h.getFile()).text();
+  if(!t.trim())return false;
+  const d=JSON.parse(t);
+  if(!Array.isArray(d))throw new Error("not a work order file");
+  if(wos.length&&JSON.stringify(d)!==JSON.stringify(wos)&&!confirm("This browser has a list that differs from the file.\n\nOK = use the file's list.\nCancel = keep this browser's list and save it into the file."))return false;
+  wos=d;try{localStorage.setItem(KEY,JSON.stringify(wos))}catch(e){}
+  return true;
 }
-let lockTimer=null;
-function unlock(){
-  document.body.classList.remove("locked");
-  clearTimeout(lockTimer);
-  lockTimer=setTimeout(lock,Math.max(1000,tokExp-Date.now()));
+async function fileSave(){
+  if(!fh)return;
+  try{
+    const w=await fh.createWritable();
+    await w.write(JSON.stringify(wos,null,2));await w.close();
+    stat("Saved to "+fh.name);
+  }catch(e){fh=null;$("fo").textContent="Reconnect file";stat("Couldn't write the file. Click Reconnect file.")}
 }
-function lock(){
-  tok=null;
-  if($("dlg").open)$("dlg").close();
-  $("lockmsg").textContent="Signed out. Sign in with Google to open your work orders.";
-  document.body.classList.add("locked");
+async function useHandle(h){
+  fh=h;
+  try{await idb("readwrite",s=>s.put(h,"file"))}catch(e){}
+  const loaded=await loadFrom(h);
+  $("fo").textContent="Data file: "+h.name;
+  if(loaded){render();stat("Loaded "+h.name)}else{await fileSave()}
 }
-$("unlock").onclick=()=>$("drv").onclick();
-$("drv").onclick=()=>{
-  if(CLIENT_ID.startsWith("PASTE")){alert("Paste your Google client ID into CLIENT_ID at the top of the Drive section in index.html first.");return}
-  if(!window.google){alert("Google sign-in didn't load. Check your connection and reload.");return}
-  tc=tc||google.accounts.oauth2.initTokenClient({client_id:CLIENT_ID,scope:"https://www.googleapis.com/auth/drive.file",callback:onTok});
-  tc.requestAccessToken({prompt:localStorage.getItem("wo-drive-on")?"":"consent"});
+const noFSA=()=>alert("Saving to a file needs Chrome, Edge, or Brave on a computer. In this browser, use Export backup and Import backup instead.");
+$("fo").onclick=async()=>{
+  if(!FSA)return noFSA();
+  try{
+    if(savedH&&!fh&&(await savedH.requestPermission({mode:"readwrite"}))==="granted"){await useHandle(savedH);return}
+    const[h]=await showOpenFilePicker({types:FT});
+    await h.requestPermission({mode:"readwrite"});
+    await useHandle(h);
+  }catch(e){if(e.name!=="AbortError")stat("Couldn't open the file: "+e.message)}
 };
-async function onTok(r){
-  if(r.error){stat("Sign-in failed");$("lockmsg").textContent="Sign-in failed. Try again.";return}
-  tok=r.access_token;tokExp=Date.now()+(r.expires_in-60)*1000;
-  localStorage.setItem("wo-drive-on","1");$("drv").textContent="Reconnect Drive";
+$("fn").onclick=async()=>{
+  if(!FSA)return noFSA();
   try{
-    stat("Syncing...");
-    const q=encodeURIComponent("name='"+FILE_NAME+"' and trashed=false");
-    const l=await(await dfetch("https://www.googleapis.com/drive/v3/files?q="+q+"&fields=files(id)")).json();
-    if(l.files.length){
-      fileId=l.files[0].id;localStorage.setItem("wo-drive-file",fileId);
-      const d=await(await dfetch("https://www.googleapis.com/drive/v3/files/"+fileId+"?alt=media")).json();
-      if(Array.isArray(d)){wos=d;try{localStorage.setItem(KEY,JSON.stringify(wos))}catch(e){}render()}
-      stat("Loaded from Drive");
-    }else{fileId="";await driveSave()}
-    render();unlock();
-  }catch(e){stat("Drive sync failed. Changes are saved in this browser only.");$("lockmsg").textContent="Couldn't reach Google Drive. Try signing in again."}
-}
-async function driveSave(){
-  if(!driveReady()){if(localStorage.getItem("wo-drive-on"))stat("Reconnect Drive to sync. Changes are saved in this browser.");return}
-  try{
-    const body=JSON.stringify(wos);
-    if(fileId){
-      await dfetch("https://www.googleapis.com/upload/drive/v3/files/"+fileId+"?uploadType=media",{method:"PATCH",headers:{"Content-Type":"application/json"},body});
-    }else{
-      const b="wo"+Date.now();
-      const mp="--"+b+"\r\nContent-Type: application/json\r\n\r\n"+JSON.stringify({name:FILE_NAME,mimeType:"application/json"})+"\r\n--"+b+"\r\nContent-Type: application/json\r\n\r\n"+body+"\r\n--"+b+"--";
-      const r=await dfetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id",{method:"POST",headers:{"Content-Type":"multipart/related; boundary="+b},body:mp});
-      fileId=(await r.json()).id;localStorage.setItem("wo-drive-file",fileId);
-    }
-    stat("Saved to Drive");
-  }catch(e){stat("Drive save failed. Changes are saved in this browser.")}
-}
-
+    const h=await showSaveFilePicker({suggestedName:"work-orders.json",types:FT});
+    fh=h;try{await idb("readwrite",s=>s.put(h,"file"))}catch(e){}
+    $("fo").textContent="Data file: "+h.name;await fileSave();
+  }catch(e){if(e.name!=="AbortError")stat("Couldn't create the file: "+e.message)}
+};
+if(FSA)idb("readonly",s=>s.get("file")).then(h=>{if(h){savedH=h;$("fo").textContent="Reconnect "+h.name;stat("Not saving to the file yet. Click Reconnect.")}}).catch(()=>{});
+else stat("Saved in this browser only. Use Export backup for a file.");
+render();
 </script>
 </body>
 </html>
