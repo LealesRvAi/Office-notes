@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Work Order Tracker</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+:root{--bg:#e8ecef;--panel:#fff;--ink:#1a2330;--mute:#5d6b7a;--line:#cdd5dc;--accent:#2a5b88;--red:#c62828;--redbg:#fdeaea;--ok:#2e7d4f;--warn:#b26a00}
+@media (prefers-color-scheme:dark){:root{--bg:#141a21;--panel:#1d252e;--ink:#e6ebf0;--mute:#98a6b4;--line:#33404d;--accent:#6aa5da;--red:#ff6b64;--redbg:#3a1d1d;--ok:#59c283;--warn:#e3a043}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.45 Barlow,system-ui,sans-serif}
+header{padding:20px clamp(14px,4vw,40px) 8px;display:flex;flex-wrap:wrap;gap:12px 24px;align-items:end;justify-content:space-between}
+h1{font:700 34px/1 'Barlow Condensed',Impact,sans-serif;margin:0;letter-spacing:.01em}
+.sum{display:flex;gap:22px;color:var(--mute)}
+.sum b{display:block;font:700 26px/1.1 'Barlow Condensed',Impact,sans-serif;color:var(--ink)}
+.sum .r b{color:var(--red)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;padding:8px clamp(14px,4vw,40px) 14px}
+button,select,input,textarea{font:inherit;color:inherit}
+button{border:1px solid var(--line);background:var(--panel);padding:8px 14px;border-radius:6px;cursor:pointer;min-height:40px}
+button.p{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button.d{color:var(--red)}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+.bar select,.bar input{border:1px solid var(--line);background:var(--panel);padding:8px 10px;border-radius:6px;min-height:40px}
+.bar .sp{flex:1}
+main{padding:0 clamp(14px,4vw,40px) 60px;display:grid;gap:8px}
+.row{display:grid;grid-template-columns:minmax(150px,1.3fr) 150px minmax(110px,1fr) 120px 90px 110px;gap:6px 14px;align-items:center;background:var(--panel);border:1px solid var(--line);border-left:6px solid var(--accent);border-radius:6px;padding:10px 14px;cursor:pointer;text-align:left;width:100%}
+.row.stale{border-left-color:var(--red);background:var(--redbg);border-color:var(--red)}
+.row.done{opacity:.6;border-left-color:var(--ok)}
+.num{font:700 22px/1 'Barlow Condensed',Impact,sans-serif}
+.unit{color:var(--mute);font-size:14px}
+.st{font-weight:600}
+.st.po,.st.pna{color:var(--warn)}
+.st.dn{color:var(--ok)}
+.ago{font-weight:600;text-align:right}
+.stale .ago{color:var(--red)}
+.note{grid-column:1/-1;color:var(--mute);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.over{color:var(--red);font-weight:600}
+.empty{padding:40px;text-align:center;color:var(--mute)}
+dialog{border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);padding:0;width:min(640px,96vw);max-height:94vh}
+dialog::backdrop{background:rgba(10,15,20,.55)}
+form{padding:18px;display:grid;gap:12px}
+label{display:grid;gap:4px;font-weight:600;font-size:14px}
+label input,label select,label textarea{border:1px solid var(--line);background:var(--bg);padding:8px 10px;border-radius:6px;font-weight:400;font-size:16px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips label{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-weight:500;cursor:pointer;background:var(--bg)}
+.chips input{margin:0}
+.log{max-height:150px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:6px 10px;font-size:14px;background:var(--bg)}
+.log div{padding:3px 0;border-bottom:1px solid var(--line)}
+.log div:last-child{border:0}
+.log small{color:var(--mute);margin-right:6px}
+.acts{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between}
+@media(max-width:760px){.row{grid-template-columns:1fr 1fr}.ago{text-align:left}.g2{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:no-preference){.row{transition:border-color .15s}}
+.bar .unit{align-self:center}
+body.locked header,body.locked .bar,body.locked main{display:none}
+#lock{display:none;min-height:100vh;place-content:center;justify-items:center;gap:14px;text-align:center;padding:20px}
+body.locked #lock{display:grid}
+#lock p{margin:0;color:var(--mute);max-width:36ch}
+[hidden]{display:none!important}
+body.locked #calwrap{display:none}
+#calwrap{padding:0 clamp(14px,4vw,40px) 60px}
+.calhead{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.calt{font:700 26px/1 'Barlow Condensed',Impact,sans-serif;margin-left:8px}
+.calbody{background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow-x:auto}
+.calbody>*{min-width:640px}
+.dow{display:grid;grid-template-columns:repeat(7,1fr);font-weight:600;font-size:13px;color:var(--mute);padding:6px}
+.wk{display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:22px;grid-auto-rows:24px;gap:2px 0;min-height:104px;border-top:1px solid var(--line);background-image:repeating-linear-gradient(to right,transparent 0 calc(100%/7 - 1px),var(--line) calc(100%/7 - 1px) calc(100%/7))}
+.dc{font-size:12px;color:var(--mute);padding:2px 6px}
+.dc.oth{opacity:.45}
+.dc.tod{color:var(--accent);font-weight:700}
+.wb{background:var(--accent);color:#fff;border:0;border-radius:4px;min-height:0;height:22px;padding:0 6px;margin:0 2px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left}
+.wb.stale{background:var(--red)}
+.wb.done{background:var(--ok);opacity:.7}
+.wb.cl{border-radius:0 4px 4px 0;margin-left:0}
+.wb.cr{border-radius:4px 0 0 4px;margin-right:0}
+.wb.cl.cr{border-radius:0}
+.wb.due{box-shadow:inset -5px 0 0 rgba(0,0,0,.4)}
+.legend{color:var(--mute);font-size:14px;margin:8px 0 0}
+@media(prefers-color-scheme:dark){.wb{color:#0d141b}}
+</style>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body class="locked">
+<div id="lock">
+  <h1>Work Orders</h1>
+  <p id="lockmsg">Sign in with Google to open your work orders.</p>
+  <button class="p" id="unlock">Sign in with Google</button>
+</div>
+<header>
+  <h1>Work Orders</h1>
+  <div class="sum" id="sum"></div>
+</header>
+<div class="bar">
+  <button class="p" id="add">+ New work order</button>
+  <button id="vw">Calendar view</button>
+  <select id="fs" aria-label="Filter by status"></select>
+  <select id="ft" aria-label="Filter by tech"></select>
+  <select id="so" aria-label="Sort">
+    <option value="stale">Sort: longest since looked</option>
+    <option value="due">Sort: due date</option>
+    <option value="val">Sort: value</option>
+    <option value="num">Sort: WO number</option>
+  </select>
+  <button id="drv">Connect Google Drive</button><span id="dstat" class="unit" role="status"></span>
+  <span class="sp"></span>
+  <button id="xdone">Export done notes</button>
+  <button id="exp">Export backup</button>
+  <button id="imp">Import backup</button>
+  <input type="file" id="file" accept="application/json" hidden>
+</div>
+<main id="list"></main>
+<section id="calwrap" hidden><div id="cal"></div><p class="legend">Each bar runs from the day it came in to its due date. The darker end marks the due date. Click a bar to open it.</p></section>
+
+<dialog id="dlg">
+<form method="dialog" id="f">
+  <div class="g2">
+    <label>WO number<input id="num" required></label>
+    <label>Unit / customer<input id="unit" placeholder="2019 Winnebago, Smith"></label>
+  </div>
+  <div class="g2">
+    <label>Came in<input id="came" type="date"></label>
+    <label>Due date<input id="due" type="date"></label>
+  </div>
+  <div class="g2">
+    <label>Value ($)<input id="val" type="number" min="0" step="0.01"></label>
+    <label>Status<select id="status"></select></label>
+  </div>
+  <div><b style="font-size:14px">Techs working on it</b><div class="chips" id="techs"></div></div>
+  <label>Add a note<textarea id="nt" rows="2" placeholder="Called vendor, part ETA Friday..."></textarea></label>
+  <div class="log" id="log"></div>
+  <div class="acts">
+    <button type="button" class="d" id="del">Delete</button>
+    <span>
+      <button type="button" id="cancel">Close</button>
+      <button type="submit" class="p">Save</button>
+    </span>
+  </div>
+</form>
+</dialog>
+
+<dialog id="xdlg">
+<form method="dialog">
+  <b>Notes from Done work orders</b>
+  <label>Tech<select id="xtech"></select></label>
+  <textarea id="xtext" rows="12" readonly style="border:1px solid var(--line);background:var(--bg);padding:8px;border-radius:6px"></textarea>
+  <div class="acts">
+    <button type="button" id="xdl">Download file</button>
+    <button type="button" id="xsh">Share / save to phone</button>
+    <button type="button" id="xem">Email it</button>
+    <button type="submit">Close</button>
+  </div>
+</form>
+</dialog>
+
+<script>
+const EMAILS={Victor:"victor@leales.com"};
+const STATUSES=["Open","Parts on order","PNA turned in (back log)","Waiting on customer","On hold","Done"];
+const TECHS=["Victor","Chewie","Marcos","Ceaser","Axel","Heather","Michael"];
+const STALE_DAYS=3, KEY="wo-tracker-v1";
+let wos=[];
+try{wos=JSON.parse(localStorage.getItem(KEY)||"[]")}catch(e){wos=[]}
+const $=id=>document.getElementById(id);
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(wos))}catch(e){}clearTimeout(timer);timer=setTimeout(()=>driveSave(),600)};
+const money=n=>(+n||0).toLocaleString(undefined,{style:"currency",currency:"USD",maximumFractionDigits:0});
+const days=w=>Math.floor((Date.now()-new Date(w.looked))/864e5);
+const isStale=w=>w.status!=="Done"&&days(w)>=STALE_DAYS;
+const cls=s=>s==="Done"?"dn":s==="Parts on order"?"po":s.startsWith("PNA")?"pna":"";
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmtDue=d=>d?new Date(d+"T00:00").toLocaleDateString(undefined,{month:"short",day:"numeric"}):"No due date";
+const today=()=>new Date().toISOString().slice(0,10);
+
+$("fs").innerHTML='<option value="">All statuses</option><option value="_open">Not done</option>'+STATUSES.map(s=>`<option>${esc(s)}</option>`).join("");
+$("fs").value="_open";
+$("ft").innerHTML='<option value="">All techs</option>'+TECHS.map(t=>`<option>${t}</option>`).join("");
+$("status").innerHTML=STATUSES.map(s=>`<option>${esc(s)}</option>`).join("");
+$("techs").innerHTML=TECHS.map(t=>`<label><input type="checkbox" value="${t}">${t}</label>`).join("");
+
+let view="list",cm=new Date();cm.setDate(1);
+const dn=s=>{const[a,b,c]=s.split("-").map(Number);return Math.floor(Date.UTC(a,b-1,c)/864e5)};
+const dnOf=d=>Math.floor(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())/864e5);
+function renderCal(L){
+  const y=cm.getFullYear(),m=cm.getMonth(),f=new Date(y,m,1).getDay();
+  const weeks=Math.ceil((f+new Date(y,m+1,0).getDate())/7);
+  const start=new Date(y,m,1-f),s0=dnOf(start),t0=dnOf(new Date());
+  const items=L.map(w=>{const a=w.came||w.due,b=w.due||w.came;if(!a)return null;let s=dn(a),e=dn(b);if(e<s)[s,e]=[e,s];return{w,s,e}}).filter(Boolean).sort((p,q)=>p.s-q.s||q.e-p.e);
+  let h='<div class="calhead"><button id="cp">Prev</button><button id="cn">Next</button><button id="ct">This month</button><b class="calt">'+cm.toLocaleDateString(undefined,{month:"long",year:"numeric"})+'</b></div><div class="calbody"><div class="dow">'+["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>"<span>"+d+"</span>").join("")+"</div>";
+  for(let i=0;i<weeks;i++){
+    const ws=s0+i*7,we=ws+6,lanes=[];let cells="",bars="";
+    for(let d=0;d<7;d++){
+      const dt=new Date(start.getFullYear(),start.getMonth(),start.getDate()+i*7+d);
+      cells+='<span class="dc '+(dt.getMonth()!==m?"oth":"")+" "+(ws+d===t0?"tod":"")+'" style="grid-column:'+(d+1)+';grid-row:1">'+dt.getDate()+"</span>";
+    }
+    items.filter(it=>it.e>=ws&&it.s<=we).forEach(it=>{
+      const c1=Math.max(it.s,ws)-ws+1,c2=Math.min(it.e,we)-ws+2;
+      let ln=lanes.findIndex(end=>end<c1);if(ln<0){ln=lanes.length;lanes.push(0)}lanes[ln]=c2-1;
+      const w=it.w,k=isStale(w)?"stale":w.status==="Done"?"done":"";
+      bars+='<button class="wb '+k+(it.s<ws?" cl":"")+(it.e>we?" cr":"")+(it.e<=we?" due":"")+'" data-id="'+w.id+'" style="grid-row:'+(ln+2)+";grid-column:"+c1+"/"+c2+'" title="'+esc(w.num+" "+w.unit+" | came in "+(w.came||"?")+" | due "+(w.due||"?"))+'">'+esc(w.num+" "+w.unit)+"</button>";
+    });
+    h+='<div class="wk">'+cells+bars+"</div>";
+  }
+  $("cal").innerHTML=h+"</div>";
+}
+$("cal").onclick=e=>{
+  const t=e.target.closest("button");if(!t)return;
+  if(t.dataset.id)return openDlg(t.dataset.id);
+  if(t.id==="cp")cm.setMonth(cm.getMonth()-1);
+  else if(t.id==="cn")cm.setMonth(cm.getMonth()+1);
+  else if(t.id==="ct"){cm=new Date();cm.setDate(1)}
+  else return;
+  render();
+};
+$("vw").onclick=()=>{view=view==="list"?"cal":"list";$("vw").textContent=view==="list"?"Calendar view":"List view";render()};
+
+function render(){
+  const fs=$("fs").value, ft=$("ft").value, so=$("so").value;
+  let L=wos.filter(w=>(!fs||(fs==="_open"?w.status!=="Done":w.status===fs))&&(!ft||w.techs.includes(ft)));
+  const by={stale:(a,b)=>(isStale(b)-isStale(a))||(days(b)-days(a)),
+    due:(a,b)=>(a.due||"9999").localeCompare(b.due||"9999"),
+    val:(a,b)=>b.value-a.value, num:(a,b)=>a.num.localeCompare(b.num,undefined,{numeric:true})};
+  L.sort(by[so]);
+  $("list").hidden=view==="cal";$("calwrap").hidden=view!=="cal";
+  if(view==="cal")renderCal(L);
+  const open=wos.filter(w=>w.status!=="Done");
+  $("sum").innerHTML=`<div>Open<b>${open.length}</b></div><div>Open value<b>${money(open.reduce((s,w)=>s+ +w.value,0))}</b></div><div class="r">Gone stale<b>${open.filter(isStale).length}</b></div>`;
+  $("list").innerHTML=L.length?L.map(w=>{
+    const d=days(w), late=w.due&&w.status!=="Done"&&w.due<today();
+    const last=w.notes[w.notes.length-1];
+    return `<button class="row ${isStale(w)?"stale":""} ${w.status==="Done"?"done":""}" data-id="${w.id}">
+      <span><span class="num">${esc(w.num)}</span><br><span class="unit">${esc(w.unit)}</span></span>
+      <span class="st ${cls(w.status)}">${esc(w.status)}</span>
+      <span>${w.techs.length?esc(w.techs.join(", ")):"<span class='unit'>No tech logged</span>"}</span>
+      <span class="${late?"over":""}">${w.came?'<span class="unit">In '+fmtDue(w.came)+'</span><br>':""}${w.due?(late?"Past due ":"Due ")+fmtDue(w.due):"No due date"}</span>
+      <span>${money(w.value)}</span>
+      <span class="ago">${d<1?"Looked today":d+(d===1?" day":" days")+" ago"}</span>
+      ${last?`<span class="note">${esc(last.text)}</span>`:""}</button>`}).join("")
+    :'<div class="empty">No work orders here. Use "New work order" to add one.</div>';
+}
+$("list").onclick=e=>{const b=e.target.closest(".row");if(b)openDlg(b.dataset.id)};
+["fs","ft","so"].forEach(i=>$(i).onchange=render);
+
+let cur=null;
+function renderLog(){
+  $("log").innerHTML=cur.notes.length?cur.notes.slice().reverse().map(n=>`<div><small>${new Date(n.t).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}</small>${esc(n.text)}</div>`).join(""):'<div><small>No notes yet</small></div>';
+}
+function openDlg(id){
+  cur=wos.find(w=>w.id===id);
+  const isNew=!cur;
+  if(isNew)cur={id:crypto.randomUUID(),num:"",unit:"",value:0,status:"Open",techs:[],came:today(),due:"",looked:new Date().toISOString(),notes:[]};
+  cur._new=isNew;
+  $("num").value=cur.num;$("unit").value=cur.unit;$("val").value=cur.value||"";$("due").value=cur.due;$("came").value=cur.came||"";$("status").value=cur.status;$("nt").value="";
+  document.querySelectorAll("#techs input").forEach(c=>c.checked=cur.techs.includes(c.value));
+  $("del").style.display=isNew?"none":"";
+  renderLog();$("dlg").showModal();
+}
+$("add").onclick=()=>openDlg(null);
+$("cancel").onclick=()=>{
+  // Opening a work order counts as looking at it.
+  if(!cur._new){cur.looked=new Date().toISOString();save();render()}
+  $("dlg").close();
+};
+$("dlg").addEventListener("cancel",()=>{if(cur&&!cur._new){cur.looked=new Date().toISOString();save();render()}});
+$("f").onsubmit=()=>{
+  Object.assign(cur,{num:$("num").value.trim(),unit:$("unit").value.trim(),value:+$("val").value||0,came:$("came").value,due:$("due").value,status:$("status").value,
+    techs:[...document.querySelectorAll("#techs input:checked")].map(c=>c.value),looked:new Date().toISOString()});
+  const t=$("nt").value.trim();if(t)cur.notes.push({t:new Date().toISOString(),text:t});
+  if(cur._new){delete cur._new;wos.push(cur)}
+  save();render();
+};
+$("del").onclick=()=>{if(confirm("Delete work order "+cur.num+"?")){wos=wos.filter(w=>w.id!==cur.id);save();render();$("dlg").close()}};
+
+$("exp").onclick=()=>{
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(wos,null,2)],{type:"application/json"}));
+  a.download="work-orders-"+today()+".json";a.click();
+};
+$("imp").onclick=()=>$("file").click();
+$("file").onchange=async e=>{
+  try{const d=JSON.parse(await e.target.files[0].text());
+    if(!Array.isArray(d))throw 0;
+    if(confirm("Replace current list with "+d.length+" work orders from this file?")){wos=d;save();render()}
+  }catch(x){alert("That file isn't a valid backup.")}
+  e.target.value="";
+};
+$("xtech").innerHTML='<option value="">All techs</option>'+TECHS.map(t=>`<option>${t}</option>`).join("");
+function doneText(){
+  const t=$("xtech").value;
+  const L=wos.filter(w=>w.status==="Done"&&(!t||w.techs.includes(t)));
+  if(!L.length)return "No Done work orders"+(t?" for "+t:"")+" yet.";
+  return "Done work order notes"+(t?" - "+t:"")+" (exported "+today()+")\n\n"+L.map(w=>
+    "WO "+w.num+(w.unit?" - "+w.unit:"")+"\nTechs: "+(w.techs.join(", ")||"none")+"   Value: "+money(w.value)+"   Due: "+(w.due||"none")+"\n"+
+    (w.notes.length?w.notes.map(n=>"  ["+n.t.slice(0,10)+"] "+n.text).join("\n"):"  (no notes)")).join("\n\n");
+}
+const refreshX=()=>$("xtext").value=doneText();
+const xFile=()=>new File([doneText()],"done-notes-"+today()+".txt",{type:"text/plain"});
+$("xdone").onclick=()=>{$("xtech").value=$("ft").value;refreshX();$("xdlg").showModal()};
+$("xtech").onchange=refreshX;
+$("xdl").onclick=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(xFile());a.download=xFile().name;a.click()};
+$("xsh").onclick=async()=>{
+  const f=xFile();
+  try{
+    if(navigator.canShare&&navigator.canShare({files:[f]}))await navigator.share({files:[f],title:"Done work order notes"});
+    else if(navigator.share)await navigator.share({title:"Done work order notes",text:doneText()});
+    else $("xdl").click();
+  }catch(e){}
+};
+$("xem").onclick=()=>{
+  const to=EMAILS[$("xtech").value]||"";
+  location.href="mailto:"+to+"?subject="+encodeURIComponent("Done work order notes "+today())+"&body="+encodeURIComponent(doneText());
+};
+
+/* ---------- Google Drive sync ---------- */
+const CLIENT_ID="PASTE_YOUR_CLIENT_ID.apps.googleusercontent.com";
+const FILE_NAME="work-orders.json";
+let tok=null,tokExp=0,tc=null,timer=null,fileId=localStorage.getItem("wo-drive-file")||"";
+const stat=t=>{$("dstat").textContent=t};
+const driveReady=()=>tok&&Date.now()<tokExp;
+async function dfetch(url,opt={}){
+  const r=await fetch(url,{...opt,headers:{...(opt.headers||{}),Authorization:"Bearer "+tok}});
+  if(r.status===401){tok=null;throw new Error("expired")}
+  if(!r.ok)throw new Error("Drive error "+r.status);
+  return r;
+}
+let lockTimer=null;
+function unlock(){
+  document.body.classList.remove("locked");
+  clearTimeout(lockTimer);
+  lockTimer=setTimeout(lock,Math.max(1000,tokExp-Date.now()));
+}
+function lock(){
+  tok=null;
+  if($("dlg").open)$("dlg").close();
+  $("lockmsg").textContent="Signed out. Sign in with Google to open your work orders.";
+  document.body.classList.add("locked");
+}
+$("unlock").onclick=()=>$("drv").onclick();
+$("drv").onclick=()=>{
+  if(CLIENT_ID.startsWith("PASTE")){alert("Paste your Google client ID into CLIENT_ID at the top of the Drive section in index.html first.");return}
+  if(!window.google){alert("Google sign-in didn't load. Check your connection and reload.");return}
+  tc=tc||google.accounts.oauth2.initTokenClient({client_id:CLIENT_ID,scope:"https://www.googleapis.com/auth/drive.file",callback:onTok});
+  tc.requestAccessToken({prompt:localStorage.getItem("wo-drive-on")?"":"consent"});
+};
+async function onTok(r){
+  if(r.error){stat("Sign-in failed");$("lockmsg").textContent="Sign-in failed. Try again.";return}
+  tok=r.access_token;tokExp=Date.now()+(r.expires_in-60)*1000;
+  localStorage.setItem("wo-drive-on","1");$("drv").textContent="Reconnect Drive";
+  try{
+    stat("Syncing...");
+    const q=encodeURIComponent("name='"+FILE_NAME+"' and trashed=false");
+    const l=await(await dfetch("https://www.googleapis.com/drive/v3/files?q="+q+"&fields=files(id)")).json();
+    if(l.files.length){
+      fileId=l.files[0].id;localStorage.setItem("wo-drive-file",fileId);
+      const d=await(await dfetch("https://www.googleapis.com/drive/v3/files/"+fileId+"?alt=media")).json();
+      if(Array.isArray(d)){wos=d;try{localStorage.setItem(KEY,JSON.stringify(wos))}catch(e){}render()}
+      stat("Loaded from Drive");
+    }else{fileId="";await driveSave()}
+    render();unlock();
+  }catch(e){stat("Drive sync failed. Changes are saved in this browser only.");$("lockmsg").textContent="Couldn't reach Google Drive. Try signing in again."}
+}
+async function driveSave(){
+  if(!driveReady()){if(localStorage.getItem("wo-drive-on"))stat("Reconnect Drive to sync. Changes are saved in this browser.");return}
+  try{
+    const body=JSON.stringify(wos);
+    if(fileId){
+      await dfetch("https://www.googleapis.com/upload/drive/v3/files/"+fileId+"?uploadType=media",{method:"PATCH",headers:{"Content-Type":"application/json"},body});
+    }else{
+      const b="wo"+Date.now();
+      const mp="--"+b+"\r\nContent-Type: application/json\r\n\r\n"+JSON.stringify({name:FILE_NAME,mimeType:"application/json"})+"\r\n--"+b+"\r\nContent-Type: application/json\r\n\r\n"+body+"\r\n--"+b+"--";
+      const r=await dfetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id",{method:"POST",headers:{"Content-Type":"multipart/related; boundary="+b},body:mp});
+      fileId=(await r.json()).id;localStorage.setItem("wo-drive-file",fileId);
+    }
+    stat("Saved to Drive");
+  }catch(e){stat("Drive save failed. Changes are saved in this browser.")}
+}
+
+</script>
+</body>
+</html>
