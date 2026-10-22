@@ -31,7 +31,7 @@ main{padding:0 clamp(14px,4vw,40px) 60px;display:grid;gap:8px}
 .unit{color:var(--mute);font-size:14px}
 .st{font-weight:600}
 .st.po,.st.pna{color:var(--warn)}
-.st.dn{color:var(--ok)}
+.st.dn,.st.ph{color:var(--ok)}
 .ago{font-weight:600;text-align:right}
 .stale .ago{color:var(--red)}
 .note{grid-column:1/-1;color:var(--mute);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -74,6 +74,10 @@ label input,label select,label textarea{border:1px solid var(--line);background:
 .wb.due{box-shadow:inset -5px 0 0 rgba(0,0,0,.4)}
 .legend{color:var(--mute);font-size:14px;margin:8px 0 0}
 @media(prefers-color-scheme:dark){.wb{color:#0d141b}}
+.g3{display:grid;grid-template-columns:90px 1fr 1fr;gap:12px}
+#plate{text-transform:uppercase}
+.cust{font-weight:600}
+@media(max-width:760px){.g3{grid-template-columns:90px 1fr}}
 </style>
 </head>
 <body>
@@ -86,6 +90,7 @@ label input,label select,label textarea{border:1px solid var(--line);background:
   <button id="vw">Calendar view</button>
   <select id="fs" aria-label="Filter by status"></select>
   <select id="ft" aria-label="Filter by tech"></select>
+  <input id="q" type="search" placeholder="Search WO, customer, plate" aria-label="Search">
   <select id="so" aria-label="Sort">
     <option value="stale">Sort: longest since looked</option>
     <option value="due">Sort: due date</option>
@@ -106,7 +111,12 @@ label input,label select,label textarea{border:1px solid var(--line);background:
 <form method="dialog" id="f">
   <div class="g2">
     <label>WO number<input id="num" required></label>
-    <label>Unit / customer<input id="unit" placeholder="2019 Winnebago, Smith"></label>
+    <label>Customer name<input id="cust"></label>
+  </div>
+  <div class="g3">
+    <label>Year<input id="year" inputmode="numeric" maxlength="4" placeholder="2019"></label>
+    <label>Unit type<input id="type" placeholder="Class A, travel trailer..."></label>
+    <label>License plate<input id="plate"></label>
   </div>
   <div class="g2">
     <label>Came in<input id="came" type="date"></label>
@@ -145,17 +155,25 @@ label input,label select,label textarea{border:1px solid var(--line);background:
 
 <script>
 const EMAILS={Victor:"victor@leales.com"};
-const STATUSES=["Open","Parts on order","PNA turned in (back log)","Waiting on customer","On hold","Done"];
+const STATUSES=["Open","Parts on order","Parts here","PNA turned in (back log)","Waiting on customer","On hold","Done"];
 const TECHS=["Victor","Chewie","Marcos","Ceaser","Axel","Heather","Michael"];
 const STALE_DAYS=3, KEY="wo-tracker-v1";
 let wos=[];
 try{wos=JSON.parse(localStorage.getItem(KEY)||"[]")}catch(e){wos=[]}
+wos.forEach(norm);
+function norm(w){
+  if(w.unit!==undefined){if(!w.type)w.type=w.unit;delete w.unit}
+  ["customer","year","type","plate"].forEach(k=>{if(w[k]==null)w[k]=""});
+  if(!w.techs)w.techs=[];if(!w.notes)w.notes=[];
+  return w;
+}
+const lbl=w=>w.num+(w.customer?" "+w.customer:"");
 const $=id=>document.getElementById(id);
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(wos))}catch(e){}clearTimeout(timer);timer=setTimeout(()=>fileSave(),600)};
 const money=n=>(+n||0).toLocaleString(undefined,{style:"currency",currency:"USD",maximumFractionDigits:0});
 const days=w=>Math.floor((Date.now()-new Date(w.looked))/864e5);
 const isStale=w=>w.status!=="Done"&&days(w)>=STALE_DAYS;
-const cls=s=>s==="Done"?"dn":s==="Parts on order"?"po":s.startsWith("PNA")?"pna":"";
+const cls=s=>s==="Done"?"dn":s==="Parts on order"?"po":s==="Parts here"?"ph":s.startsWith("PNA")?"pna":"";
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const fmtDue=d=>d?new Date(d+"T00:00").toLocaleDateString(undefined,{month:"short",day:"numeric"}):"No due date";
 const today=()=>new Date().toISOString().slice(0,10);
@@ -185,7 +203,7 @@ function renderCal(L){
       const c1=Math.max(it.s,ws)-ws+1,c2=Math.min(it.e,we)-ws+2;
       let ln=lanes.findIndex(end=>end<c1);if(ln<0){ln=lanes.length;lanes.push(0)}lanes[ln]=c2-1;
       const w=it.w,k=isStale(w)?"stale":w.status==="Done"?"done":"";
-      bars+='<button class="wb '+k+(it.s<ws?" cl":"")+(it.e>we?" cr":"")+(it.e<=we?" due":"")+'" data-id="'+w.id+'" style="grid-row:'+(ln+2)+";grid-column:"+c1+"/"+c2+'" title="'+esc(w.num+" "+w.unit+" | came in "+(w.came||"?")+" | due "+(w.due||"?"))+'">'+esc(w.num+" "+w.unit)+"</button>";
+      bars+='<button class="wb '+k+(it.s<ws?" cl":"")+(it.e>we?" cr":"")+(it.e<=we?" due":"")+'" data-id="'+w.id+'" style="grid-row:'+(ln+2)+";grid-column:"+c1+"/"+c2+'" title="'+esc(lbl(w)+" | "+[w.year,w.type,w.plate].filter(Boolean).join(" ")+" | came in "+(w.came||"?")+" | due "+(w.due||"?"))+'">'+esc(lbl(w))+"</button>";
     });
     h+='<div class="wk">'+cells+bars+"</div>";
   }
@@ -203,8 +221,8 @@ $("cal").onclick=e=>{
 $("vw").onclick=()=>{view=view==="list"?"cal":"list";$("vw").textContent=view==="list"?"Calendar view":"List view";render()};
 
 function render(){
-  const fs=$("fs").value, ft=$("ft").value, so=$("so").value;
-  let L=wos.filter(w=>(!fs||(fs==="_open"?w.status!=="Done":w.status===fs))&&(!ft||w.techs.includes(ft)));
+  const fs=$("fs").value, ft=$("ft").value, so=$("so").value, q=$("q").value.trim().toLowerCase();
+  let L=wos.filter(w=>(!fs||(fs==="_open"?w.status!=="Done":w.status===fs))&&(!ft||w.techs.includes(ft))&&(!q||[w.num,w.customer,w.year,w.type,w.plate].join(" ").toLowerCase().includes(q)));
   const by={stale:(a,b)=>(isStale(b)-isStale(a))||(days(b)-days(a)),
     due:(a,b)=>(a.due||"9999").localeCompare(b.due||"9999"),
     val:(a,b)=>b.value-a.value, num:(a,b)=>a.num.localeCompare(b.num,undefined,{numeric:true})};
@@ -212,12 +230,12 @@ function render(){
   $("list").hidden=view==="cal";$("calwrap").hidden=view!=="cal";
   if(view==="cal")renderCal(L);
   const open=wos.filter(w=>w.status!=="Done");
-  $("sum").innerHTML=`<div>Open<b>${open.length}</b></div><div>Open value<b>${money(open.reduce((s,w)=>s+ +w.value,0))}</b></div><div class="r">Gone stale<b>${open.filter(isStale).length}</b></div>`;
+  $("sum").innerHTML=`<div>Open<b>${open.length}</b></div><div>Open value<b>${money(open.reduce((s,w)=>s+ +w.value,0))}</b></div><div class="r">Gone stale<b>${open.filter(isStale).length}</b></div><div>Done value<b>${money(wos.filter(w=>w.status==="Done").reduce((s,w)=>s+ +w.value,0))}</b></div>`;
   $("list").innerHTML=L.length?L.map(w=>{
     const d=days(w), late=w.due&&w.status!=="Done"&&w.due<today();
     const last=w.notes[w.notes.length-1];
     return `<button class="row ${isStale(w)?"stale":""} ${w.status==="Done"?"done":""}" data-id="${w.id}">
-      <span><span class="num">${esc(w.num)}</span><br><span class="unit">${esc(w.unit)}</span></span>
+      <span><span class="num">${esc(w.num)}</span>${w.customer?`<br><span class="cust">${esc(w.customer)}</span>`:""}<br><span class="unit">${esc([[w.year,w.type].filter(Boolean).join(" "),w.plate?"Plate "+w.plate:""].filter(Boolean).join(", ")||"No unit info")}</span></span>
       <span class="st ${cls(w.status)}">${esc(w.status)}</span>
       <span>${w.techs.length?esc(w.techs.join(", ")):"<span class='unit'>No tech logged</span>"}</span>
       <span class="${late?"over":""}">${w.came?'<span class="unit">In '+fmtDue(w.came)+'</span><br>':""}${w.due?(late?"Past due ":"Due ")+fmtDue(w.due):"No due date"}</span>
@@ -228,6 +246,7 @@ function render(){
 }
 $("list").onclick=e=>{const b=e.target.closest(".row");if(b)openDlg(b.dataset.id)};
 ["fs","ft","so"].forEach(i=>$(i).onchange=render);
+$("q").oninput=render;
 
 let cur=null;
 function renderLog(){
@@ -236,9 +255,9 @@ function renderLog(){
 function openDlg(id){
   cur=wos.find(w=>w.id===id);
   const isNew=!cur;
-  if(isNew)cur={id:crypto.randomUUID(),num:"",unit:"",value:0,status:"Open",techs:[],came:today(),due:"",looked:new Date().toISOString(),notes:[]};
+  if(isNew)cur={id:crypto.randomUUID(),num:"",customer:"",year:"",type:"",plate:"",value:0,status:"Open",techs:[],came:today(),due:"",looked:new Date().toISOString(),notes:[]};
   cur._new=isNew;
-  $("num").value=cur.num;$("unit").value=cur.unit;$("val").value=cur.value||"";$("due").value=cur.due;$("came").value=cur.came||"";$("status").value=cur.status;$("nt").value="";
+  $("num").value=cur.num;$("cust").value=cur.customer;$("year").value=cur.year;$("type").value=cur.type;$("plate").value=cur.plate;$("val").value=cur.value||"";$("due").value=cur.due;$("came").value=cur.came||"";$("status").value=cur.status;$("nt").value="";
   document.querySelectorAll("#techs input").forEach(c=>c.checked=cur.techs.includes(c.value));
   $("del").style.display=isNew?"none":"";
   renderLog();$("dlg").showModal();
@@ -251,7 +270,7 @@ $("cancel").onclick=()=>{
 };
 $("dlg").addEventListener("cancel",()=>{if(cur&&!cur._new){cur.looked=new Date().toISOString();save();render()}});
 $("f").onsubmit=()=>{
-  Object.assign(cur,{num:$("num").value.trim(),unit:$("unit").value.trim(),value:+$("val").value||0,came:$("came").value,due:$("due").value,status:$("status").value,
+  Object.assign(cur,{num:$("num").value.trim(),customer:$("cust").value.trim(),year:$("year").value.trim(),type:$("type").value.trim(),plate:$("plate").value.trim().toUpperCase(),value:+$("val").value||0,came:$("came").value,due:$("due").value,status:$("status").value,
     techs:[...document.querySelectorAll("#techs input:checked")].map(c=>c.value),looked:new Date().toISOString()});
   const t=$("nt").value.trim();if(t)cur.notes.push({t:new Date().toISOString(),text:t});
   if(cur._new){delete cur._new;wos.push(cur)}
@@ -268,7 +287,7 @@ $("imp").onclick=()=>$("file").click();
 $("file").onchange=async e=>{
   try{const d=JSON.parse(await e.target.files[0].text());
     if(!Array.isArray(d))throw 0;
-    if(confirm("Replace current list with "+d.length+" work orders from this file?")){wos=d;save();render()}
+    if(confirm("Replace current list with "+d.length+" work orders from this file?")){d.forEach(norm);wos=d;save();render()}
   }catch(x){alert("That file isn't a valid backup.")}
   e.target.value="";
 };
@@ -315,6 +334,7 @@ async function loadFrom(h){
   if(!t.trim())return false;
   const d=JSON.parse(t);
   if(!Array.isArray(d))throw new Error("not a work order file");
+  d.forEach(norm);
   if(wos.length&&JSON.stringify(d)!==JSON.stringify(wos)&&!confirm("This browser has a list that differs from the file.\n\nOK = use the file's list.\nCancel = keep this browser's list and save it into the file."))return false;
   wos=d;try{localStorage.setItem(KEY,JSON.stringify(wos))}catch(e){}
   return true;
